@@ -4,11 +4,41 @@ const SECRET = ENV_BOT_SECRET // A-Z, a-z, 0-9, _ and -
 const ADMIN_UID = ENV_ADMIN_UID // your user id, get it from https://t.me/username_to_id_bot
 
 const NOTIFY_INTERVAL = 3600 * 1000;
-const fraudDb = 'https://raw.githubusercontent.com/LloydAsp/nfd/main/data/fraud.db';
-const notificationUrl = 'https://raw.githubusercontent.com/LloydAsp/nfd/main/data/notification.txt'
-const startMsgUrl = 'https://raw.githubusercontent.com/LloydAsp/nfd/main/data/startMessage.md';
+const fraudDb = 'https://raw.githubusercontent.com/ALTNT/nfd/refs/heads/main/data/fraud.db';
+const notificationUrl = 'https://raw.githubusercontent.com/ALTNT/nfd/refs/heads/main/data/notification.txt'
+const startMsgUrl = 'https://raw.githubusercontent.com/ALTNT/nfd/refs/heads/main/data/startMessage.md';
 
-const enable_notification = true
+const enable_notification = false
+const spamKeywordsDb = 'https://raw.githubusercontent.com/ALTNT/nfd/refs/heads/main/data/spamKeywords.db'
+let SPAM_KEYWORDS_CACHE = null
+let SPAM_CACHE_EXPIRE = 0
+const SPAM_CACHE_TTL = 3600 * 1000
+
+async function loadSpamKeywords(){
+  if (SPAM_KEYWORDS_CACHE && Date.now() < SPAM_CACHE_EXPIRE) return SPAM_KEYWORDS_CACHE
+  try {
+    const db = await fetch(spamKeywordsDb).then(r => r.text())
+    const arr = db.split('\n').map(v => v.trim()).filter(v => v)
+    SPAM_KEYWORDS_CACHE = arr
+    SPAM_CACHE_EXPIRE = Date.now() + SPAM_CACHE_TTL
+  } catch (e) {
+    if (!SPAM_KEYWORDS_CACHE) SPAM_KEYWORDS_CACHE = []
+  }
+  return SPAM_KEYWORDS_CACHE
+}
+
+async function isSpam(message){
+  const text = (message.text || message.caption || '')
+  if (!text) return false
+  const lower = text.toLowerCase()
+  const keywords = await loadSpamKeywords()
+  for (let i = 0; i < keywords.length; i++) {
+    const k = keywords[i]
+    if (!k) continue
+    if (lower.includes(k.toLowerCase())) return true
+  }
+  return false
+}
 /**
  * Return url to telegram api, optionally with parameters added
  */
@@ -139,6 +169,10 @@ async function handleGuestMessage(message){
       chat_id: chatId,
       text:'Your are blocked'
     })
+  }
+
+  if (await isSpam(message)) {
+    return
   }
 
   let forwardReq = await forwardMessage({
